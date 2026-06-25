@@ -1,0 +1,21 @@
+{
+  "spots": [
+    {
+      "id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+      "name": "Miejsce 1 — Rampa A",
+      "zone": "CD2 Północ",
+      "createdAt": "2026-04-19T12:00:00.000Z"
+    },
+    {
+      "id": "b2c3d4e5-f6a7-4890-b123-456789abcdef0",
+      "name": "Miejsce 2 — Rampa A",
+      "zone": "CD3 Wschód",
+      "createdAt": "2026-04-19T12:00:00.000Z"
+    }
+  ],
+  "drivers": [
+    { "id": "drv001", "plate": "WX12345", "name": "Jan Kowalski", "phone": "501234567", "createdAt": "2026-04-19T12:00:00.000Z" },
+    { "id": "drv002", "plate": "KR98765", "name": "Anna Nowak", "phone": "602345678", "createdAt": "2026-04-19T12:00:00.000Z" }
+  ],
+  "checkIns": []
+}

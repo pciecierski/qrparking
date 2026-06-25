@@ -1,0 +1,15 @@
+# PoC: dane w data.json (wolumen). Postgres można dodać w kolejnej iteracji.
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      PORT: "3000"
+      DATA_FILE: /app/data-volume/data.json
+    volumes:
+      - parking-data:/app/data-volume
+
+volumes:
+  parking-data:

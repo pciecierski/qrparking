@@ -1,0 +1,19 @@
+{
+  "name": "qrparking",
+  "version": "1.0.0",
+  "description": "QR Parking — meldowanie kierowców na miejscach parkingowych (Express, React, MUI)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "npm install --prefix client && npm run build --prefix client",
+    "dev:client": "npm run dev --prefix client",
+    "seed:local": "node scripts/seed-local.cjs --yes"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "latest"
+  }
+}
