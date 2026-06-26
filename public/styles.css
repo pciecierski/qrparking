@@ -73,6 +73,11 @@ a {
   border: 1px solid #fdba74;
 }
 
+.status-card--picked-up {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+}
+
 .status-label {
   margin: 0 0 8px;
   font-size: 13px;
@@ -97,6 +102,13 @@ a {
   margin: 8px 0 0;
   font-size: 13px;
   color: #6b7280;
+}
+
+.status-pickup-driver {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d4ed8;
 }
 
 .check-form {
@@ -153,6 +165,7 @@ a {
 
 .plate-validation--err {
   color: #b91c1c;
+  line-height: 1.4;
 }
 
 .btn {
@@ -201,4 +214,64 @@ a {
 .hint {
   font-size: 14px;
   color: #6b7280;
+}
+
+.auth-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.auth-modal--open {
+  display: flex;
+}
+
+.auth-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+}
+
+.auth-modal__dialog {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px 16px 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
+}
+
+.auth-modal__title {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+
+.auth-modal__text {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #374151;
+}
+
+.auth-modal__dialog label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-code-input {
+  text-align: center;
+  font-size: 1.5rem;
+  letter-spacing: 0.35em;
+  text-transform: none;
+}
+
+.auth-modal__cancel {
+  margin-top: 10px;
 }

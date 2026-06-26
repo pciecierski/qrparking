@@ -2,13 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   IconButton,
-  Alert,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
+  Switch,
   TextField,
   Typography
 } from "@mui/material";
@@ -16,20 +21,25 @@ import { DataGrid } from "@mui/x-data-grid";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 
-export default function DriversPage() {
+const STATUS_LABELS = {
+  active: "Aktywny",
+  inactive: "Nieaktywny"
+};
+
+export default function KierowcyPlacowiPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
-  const [plate, setPlate] = useState("");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [status, setStatus] = useState("active");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/drivers");
+      const res = await fetch("/api/yard-drivers");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setRows(await res.json());
     } catch (e) {
@@ -44,10 +54,14 @@ export default function DriversPage() {
   }, [load]);
 
   const handleCreate = async () => {
-    const res = await fetch("/api/drivers", {
+    const res = await fetch("/api/yard-drivers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plate: plate.trim(), name: name.trim(), phone: phone.trim() })
+      body: JSON.stringify({
+        name: name.trim(),
+        identifier: identifier.trim(),
+        status
+      })
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -55,15 +69,15 @@ export default function DriversPage() {
       return;
     }
     setOpen(false);
-    setPlate("");
     setName("");
-    setPhone("");
+    setIdentifier("");
+    setStatus("active");
     load();
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Usunąć kierowcę ze słownika?")) return;
-    const res = await fetch(`/api/drivers/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!window.confirm("Usunąć kierowcę placowego z rejestru?")) return;
+    const res = await fetch(`/api/yard-drivers/${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       setError(j.error || `HTTP ${res.status}`);
@@ -72,20 +86,59 @@ export default function DriversPage() {
     load();
   };
 
+  const handleToggleStatus = useCallback(async (row) => {
+    const nextStatus = row.status === "active" ? "inactive" : "active";
+    setError(null);
+    const res = await fetch(`/api/yard-drivers/${encodeURIComponent(row.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus })
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setError(j.error || `HTTP ${res.status}`);
+      return;
+    }
+    load();
+  }, [load]);
+
   const columns = useMemo(
     () => [
       {
-        field: "plate",
-        headerName: "Nr rejestracyjny",
-        width: 160,
+        field: "identifier",
+        headerName: "Identyfikator kierowcy",
+        width: 180,
         renderCell: (p) => (
-          <Typography fontWeight={700} letterSpacing={1}>
+          <Typography fontWeight={700} letterSpacing={0.5}>
             {p.value}
           </Typography>
         )
       },
-      { field: "name", headerName: "Kierowca", flex: 1, minWidth: 160 },
-      { field: "phone", headerName: "Telefon", width: 140 },
+      { field: "name", headerName: "Imię i nazwisko", flex: 1, minWidth: 180 },
+      {
+        field: "status",
+        headerName: "Status",
+        width: 200,
+        sortable: false,
+        renderCell: (p) => (
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Switch
+              size="small"
+              checked={p.value === "active"}
+              onChange={() => handleToggleStatus(p.row)}
+              inputProps={{
+                "aria-label": p.value === "active" ? "Deaktywuj kierowcę" : "Aktywuj kierowcę"
+              }}
+            />
+            <Chip
+              size="small"
+              label={STATUS_LABELS[p.value] || p.value}
+              color={p.value === "active" ? "success" : "default"}
+              variant={p.value === "active" ? "filled" : "outlined"}
+            />
+          </Stack>
+        )
+      },
       {
         field: "actions",
         headerName: "",
@@ -98,7 +151,7 @@ export default function DriversPage() {
         )
       }
     ],
-    []
+    [handleToggleStatus]
   );
 
   return (
@@ -106,10 +159,10 @@ export default function DriversPage() {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Box>
           <Typography variant="h5" fontWeight={700}>
-            Auta na Placu
+            Kierowcy placowi
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Meldunek na miejscu możliwy tylko dla tablic z tej listy.
+            Rejestr kierowców obsługujących plac — identyfikator, dane i status aktywności.
           </Typography>
         </Box>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
@@ -135,38 +188,43 @@ export default function DriversPage() {
       />
 
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Nowy kierowca</DialogTitle>
+        <DialogTitle>Nowy kierowca placowy</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Alert severity="info" sx={{ alignItems: "flex-start" }}>
-              Każda nowa wizyta z poziomu systemu YMS będzie skutkowała wpisaniem kierowcy do rejestru
-              kierowców, który będzie pozwalał na zameldowanie się kierowcy na danym miejscu parkingowym.
-            </Alert>
-            <TextField
-              label="Numer rejestracyjny"
-              value={plate}
-              onChange={(e) => setPlate(e.target.value)}
-              placeholder="np. WX 12345"
-              autoFocus
-            />
             <TextField
               label="Imię i nazwisko"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="np. Jan Kowalski"
+              autoFocus
             />
             <TextField
-              label="Numer telefonu"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="np. 501 234 567"
-              inputMode="tel"
+              label="Identyfikator kierowcy"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="np. KP-001"
             />
+            <FormControl fullWidth>
+              <InputLabel id="yard-driver-status-label">Status</InputLabel>
+              <Select
+                labelId="yard-driver-status-label"
+                label="Status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <MenuItem value="active">Aktywny</MenuItem>
+                <MenuItem value="inactive">Nieaktywny</MenuItem>
+              </Select>
+            </FormControl>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Anuluj</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={!plate.trim() || !name.trim() || !phone.trim()}>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={!name.trim() || !identifier.trim()}
+          >
             Zapisz
           </Button>
         </DialogActions>

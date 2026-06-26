@@ -16,6 +16,22 @@ const seed = {
     { id: "drv002", plate: "KR98765", name: "Anna Nowak", phone: "602345678", createdAt: new Date().toISOString() },
     { id: "drv003", plate: "GD55555", name: "Piotr Wiśniewski", phone: "603456789", createdAt: new Date().toISOString() }
   ],
+  yardDrivers: [
+    {
+      id: "yd001",
+      name: "Tomasz Zieliński",
+      identifier: "KP-001",
+      status: "active",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "yd002",
+      name: "Maria Lewandowska",
+      identifier: "KP-002",
+      status: "inactive",
+      createdAt: new Date().toISOString()
+    }
+  ],
   checkIns: []
 };
 

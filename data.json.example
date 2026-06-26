@@ -17,5 +17,6 @@
     { "id": "drv001", "plate": "WX12345", "name": "Jan Kowalski", "phone": "501234567", "createdAt": "2026-04-19T12:00:00.000Z" },
     { "id": "drv002", "plate": "KR98765", "name": "Anna Nowak", "phone": "602345678", "createdAt": "2026-04-19T12:00:00.000Z" }
   ],
+  "yardDrivers": [],
   "checkIns": []
 }

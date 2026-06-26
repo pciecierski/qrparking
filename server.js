@@ -30,6 +30,10 @@ function isValidPhone(raw) {
   return phone.length >= 9 && phone.length <= 15;
 }
 
+function isValidAuthCode(raw) {
+  return /^[1234]{4}$/.test(String(raw || "").trim());
+}
+
 function normalizeString(value, maxLen) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, maxLen);
@@ -41,6 +45,20 @@ function driverToApi(d) {
     plate: normalizePlate(d.plate),
     name: d.name,
     phone: normalizePhone(d.phone),
+    createdAt: d.createdAt || null
+  };
+}
+
+function normalizeYardDriverStatus(raw) {
+  return raw === "inactive" ? "inactive" : "active";
+}
+
+function yardDriverToApi(d) {
+  return {
+    id: d.id,
+    name: d.name,
+    identifier: normalizeString(d.identifier, 80),
+    status: normalizeYardDriverStatus(d.status),
     createdAt: d.createdAt || null
   };
 }
@@ -73,13 +91,14 @@ function buildCheckInUrl(baseUrl, uid) {
 }
 
 function emptyState() {
-  return { spots: [], drivers: [], checkIns: [] };
+  return { spots: [], drivers: [], yardDrivers: [], checkIns: [] };
 }
 
 function normalizeState(parsed) {
   return {
     spots: Array.isArray(parsed && parsed.spots) ? parsed.spots : [],
     drivers: Array.isArray(parsed && parsed.drivers) ? parsed.drivers : [],
+    yardDrivers: Array.isArray(parsed && parsed.yardDrivers) ? parsed.yardDrivers : [],
     checkIns: Array.isArray(parsed && parsed.checkIns) ? parsed.checkIns : []
   };
 }
@@ -133,7 +152,7 @@ function initState() {
     console.log(`Utworzono plik danych: ${dbFilePath}`);
   }
   console.log(
-    `Stan parkingu: ${cachedState.spots.length} miejsc, ${cachedState.drivers.length} kierowców, ${cachedState.checkIns.length} meldunków`
+    `Stan parkingu: ${cachedState.spots.length} miejsc, ${cachedState.drivers.length} aut na placu, ${cachedState.yardDrivers.length} kierowców placowych, ${cachedState.checkIns.length} meldunków`
   );
 }
 
@@ -158,12 +177,47 @@ function findDriverByPlate(state, plate) {
   return state.drivers.find((d) => normalizePlate(d.plate) === p) || null;
 }
 
+const PLATE_ALREADY_PARKED_MSG =
+  "Pojazd z tym numerem rejestracyjnym zajmuje już miejsce parkingowe na placu, zwolnij wcześniejsze miejsce jeśli chcesz przeparkować pojazd.";
+
+function findActiveCheckInByPlateOnOtherSpot(state, plate, spotId) {
+  const p = normalizePlate(plate);
+  if (!p) return null;
+  return (
+    state.checkIns.find(
+      (c) => !c.checkedOutAt && c.spotId !== spotId && normalizePlate(c.plate) === p
+    ) || null
+  );
+}
+
 function getPublicBaseUrl(req) {
   return `${req.protocol}://${req.get("host")}`;
 }
 
+function getSpotStatus(active) {
+  if (!active) return "free";
+  if (active.pickedUpAt) return "picked_up";
+  return "occupied";
+}
+
+function checkInToApi(active) {
+  if (!active) return null;
+  return {
+    id: active.id,
+    plate: active.plate,
+    driverName: active.driverName,
+    driverPhone: active.driverPhone || null,
+    checkedInAt: active.checkedInAt,
+    pickedUpAt: active.pickedUpAt || null,
+    pickedUpByYardDriverId: active.pickedUpByYardDriverId || null,
+    pickedUpByYardDriverName: active.pickedUpByYardDriverName || null,
+    pickedUpByYardDriverIdentifier: active.pickedUpByYardDriverIdentifier || null
+  };
+}
+
 function spotToApi(spot, state, baseUrl) {
   const active = getActiveCheckIn(state, spot.id);
+  const spotStatus = getSpotStatus(active);
   const checkInUrl = buildCheckInUrl(baseUrl, spot.id);
   return {
     id: spot.id,
@@ -172,16 +226,9 @@ function spotToApi(spot, state, baseUrl) {
     createdAt: spot.createdAt || null,
     checkInUrl,
     qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(checkInUrl)}`,
-    occupied: Boolean(active),
-    activeCheckIn: active
-      ? {
-          id: active.id,
-          plate: active.plate,
-          driverName: active.driverName,
-          driverPhone: active.driverPhone || null,
-          checkedInAt: active.checkedInAt
-        }
-      : null
+    spotStatus,
+    occupied: spotStatus === "occupied",
+    activeCheckIn: checkInToApi(active)
   };
 }
 
@@ -242,8 +289,13 @@ app.delete("/api/spots/:spotId", (req, res) => {
     return res.status(404).json({ error: "Nie znaleziono miejsca." });
   }
   const active = getActiveCheckIn(state, spotId);
-  if (active) {
+  if (active && !active.pickedUpAt) {
     return res.status(400).json({ error: "Nie można usunąć zajętego miejsca — najpierw zwolnij parking." });
+  }
+  if (active && active.pickedUpAt) {
+    return res.status(400).json({
+      error: "Nie można usunąć miejsca z pobranym pojazdem — zamelduj nowe auto lub zakończ meldunek."
+    });
   }
   state.spots.splice(idx, 1);
   state.checkIns = state.checkIns.filter((c) => c.spotId !== spotId);
@@ -253,6 +305,31 @@ app.delete("/api/spots/:spotId", (req, res) => {
   } catch (err) {
     console.error("Błąd zapisu stanu:", err);
     res.status(500).json({ error: "Nie udało się zapisać danych na dysku." });
+  }
+});
+
+app.post("/api/spots/:spotId/release", (req, res) => {
+  const { spotId } = req.params;
+  const state = getState();
+  const spot = state.spots.find((s) => s.id === spotId);
+  if (!spot) {
+    return res.status(404).json({ error: "Nie znaleziono miejsca." });
+  }
+  const active = getActiveCheckIn(state, spotId);
+  if (!active) {
+    return res.status(400).json({ error: "Miejsce nie jest zajęte." });
+  }
+  if (active.pickedUpAt) {
+    return res.status(400).json({ error: "Nie można zwolnić miejsca z pobranym pojazdem." });
+  }
+  active.checkedOutAt = new Date().toISOString();
+  try {
+    persistState();
+    res.json(spotToApi(spot, state, getPublicBaseUrl(req)));
+  } catch (err) {
+    console.error("Błąd zapisu stanu:", err);
+    active.checkedOutAt = null;
+    res.status(500).json({ error: "Nie udało się zwolnić miejsca." });
   }
 });
 
@@ -316,6 +393,163 @@ app.delete("/api/drivers/:driverId", (req, res) => {
   }
 });
 
+app.get("/api/yard-drivers", (req, res) => {
+  const state = getState();
+  res.json(
+    state.yardDrivers
+      .map(yardDriverToApi)
+      .sort((a, b) => a.name.localeCompare(b.name, "pl"))
+  );
+});
+
+app.post("/api/yard-drivers", (req, res) => {
+  const name = normalizeString(req.body && req.body.name, 120);
+  const identifier = normalizeString(req.body && req.body.identifier, 80);
+  const status = normalizeYardDriverStatus(req.body && req.body.status);
+  if (!name) {
+    return res.status(400).json({ error: "Podaj imię i nazwisko kierowcy." });
+  }
+  if (!identifier) {
+    return res.status(400).json({ error: "Podaj identyfikator kierowcy." });
+  }
+  const state = getState();
+  const idKey = identifier.toLowerCase();
+  if (state.yardDrivers.some((d) => normalizeString(d.identifier, 80).toLowerCase() === idKey)) {
+    return res.status(409).json({ error: "Ten identyfikator kierowcy jest już w rejestrze." });
+  }
+  const yardDriver = {
+    id: `yd${crypto.randomBytes(4).toString("hex")}`,
+    name,
+    identifier,
+    status,
+    createdAt: new Date().toISOString()
+  };
+  state.yardDrivers.push(yardDriver);
+  try {
+    persistState();
+    res.status(201).json(yardDriverToApi(yardDriver));
+  } catch (err) {
+    console.error("Błąd zapisu stanu:", err);
+    state.yardDrivers.pop();
+    res.status(500).json({ error: "Nie udało się zapisać danych na dysku." });
+  }
+});
+
+app.patch("/api/yard-drivers/:yardDriverId", (req, res) => {
+  const status = normalizeYardDriverStatus(req.body && req.body.status);
+  const state = getState();
+  const driver = state.yardDrivers.find((d) => d.id === req.params.yardDriverId);
+  if (!driver) {
+    return res.status(404).json({ error: "Nie znaleziono kierowcy placowego." });
+  }
+  driver.status = status;
+  try {
+    persistState();
+    res.json(yardDriverToApi(driver));
+  } catch (err) {
+    console.error("Błąd zapisu stanu:", err);
+    res.status(500).json({ error: "Nie udało się zapisać danych na dysku." });
+  }
+});
+
+app.delete("/api/yard-drivers/:yardDriverId", (req, res) => {
+  const state = getState();
+  const idx = state.yardDrivers.findIndex((d) => d.id === req.params.yardDriverId);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Nie znaleziono kierowcy placowego." });
+  }
+  state.yardDrivers.splice(idx, 1);
+  try {
+    persistState();
+    res.status(204).end();
+  } catch (err) {
+    console.error("Błąd zapisu stanu:", err);
+    res.status(500).json({ error: "Nie udało się zapisać danych na dysku." });
+  }
+});
+
+app.post("/api/pobranie-auta/verify", (req, res) => {
+  const identifier = normalizeString(req.body && req.body.identifier, 80);
+  if (!identifier) {
+    return res.status(400).json({ error: "Podaj identyfikator kierowcy placowego." });
+  }
+  const state = getState();
+  const idKey = identifier.toLowerCase();
+  const driver = state.yardDrivers.find(
+    (d) => normalizeString(d.identifier, 80).toLowerCase() === idKey
+  );
+  if (!driver) {
+    return res.status(404).json({ error: "Nie rozpoznano kierowcy o podanym identyfikatorze." });
+  }
+  if (normalizeYardDriverStatus(driver.status) !== "active") {
+    return res.status(403).json({ error: "Kierowca placowy jest nieaktywny." });
+  }
+  res.json({ driver: yardDriverToApi(driver) });
+});
+
+app.post("/api/pobranie-auta/pickup", (req, res) => {
+  const yardDriverId = normalizeString(req.body && req.body.yardDriverId, 80);
+  const spotUid = parseSpotUid(req.body && req.body.spotUid);
+  if (!yardDriverId) {
+    return res.status(400).json({ error: "Brak identyfikacji kierowcy placowego." });
+  }
+  if (!spotUid) {
+    return res.status(400).json({ error: "Nie rozpoznano miejsca parkingowego z kodu QR." });
+  }
+
+  const state = getState();
+  const yardDriver = state.yardDrivers.find((d) => d.id === yardDriverId);
+  if (!yardDriver) {
+    return res.status(404).json({ error: "Nie znaleziono kierowcy placowego." });
+  }
+  if (normalizeYardDriverStatus(yardDriver.status) !== "active") {
+    return res.status(403).json({ error: "Kierowca placowy jest nieaktywny." });
+  }
+
+  const spot = state.spots.find((s) => s.id === spotUid);
+  if (!spot) {
+    return res.status(404).json({ error: "Miejsce parkingowe nie istnieje." });
+  }
+
+  const active = getActiveCheckIn(state, spotUid);
+  if (!active) {
+    return res.status(400).json({ error: "Miejsce nie jest zajęte — brak auta do pobrania." });
+  }
+  if (active.pickedUpAt) {
+    return res.status(409).json({ error: "Auto z tego miejsca zostało już pobrane." });
+  }
+
+  const pickedUpAt = new Date().toISOString();
+  active.pickedUpAt = pickedUpAt;
+  active.pickedUpByYardDriverId = yardDriver.id;
+  active.pickedUpByYardDriverName = yardDriver.name;
+  active.pickedUpByYardDriverIdentifier = normalizeString(yardDriver.identifier, 80);
+
+  try {
+    persistState();
+    res.json({
+      pickup: {
+        spotId: spot.id,
+        spotName: spot.name,
+        spotZone: normalizeString(spot.zone, 80) || null,
+        plate: active.plate,
+        driverName: active.driverName,
+        pickedUpAt,
+        pickedUpByYardDriverId: yardDriver.id,
+        pickedUpByYardDriverName: yardDriver.name,
+        pickedUpByYardDriverIdentifier: normalizeString(yardDriver.identifier, 80)
+      }
+    });
+  } catch (err) {
+    console.error("Błąd zapisu stanu:", err);
+    delete active.pickedUpAt;
+    delete active.pickedUpByYardDriverId;
+    delete active.pickedUpByYardDriverName;
+    delete active.pickedUpByYardDriverIdentifier;
+    res.status(500).json({ error: "Nie udało się zapisać pobrania auta." });
+  }
+});
+
 app.get("/api/occupancy", (req, res) => {
   const state = getState();
   const baseUrl = getPublicBaseUrl(req);
@@ -339,22 +573,40 @@ app.get("/p", (req, res) => {
   const validPlatesJson = JSON.stringify(
     state.drivers.map((d) => normalizePlate(d.plate)).filter(Boolean)
   );
+  const platesParkedElsewhereJson = JSON.stringify(
+    state.checkIns
+      .filter((c) => !c.checkedOutAt && c.spotId !== spot.id)
+      .map((c) => normalizePlate(c.plate))
+      .filter(Boolean)
+  );
 
-  const statusBlock = active
-    ? `<div class="status-card status-card--busy">
+  const spotStatus = getSpotStatus(active);
+
+  const statusBlock = !active
+    ? `<div class="status-card status-card--free">
+        <p class="status-label">Miejsce wolne</p>
+      </div>`
+    : active.pickedUpAt
+      ? `<div class="status-card status-card--picked-up">
+        <p class="status-label">Pobrany pojazd</p>
+        <p class="status-plate">${escapeHtml(active.plate)}</p>
+        <p class="status-driver">${escapeHtml(active.driverName)}</p>
+        <p class="status-time">Pobrano: ${escapeHtml(formatDateTime(active.pickedUpAt))}</p>
+        <p class="status-pickup-driver">Pobrał: ${escapeHtml(active.pickedUpByYardDriverName || "—")} (${escapeHtml(active.pickedUpByYardDriverIdentifier || "—")})</p>
+      </div>`
+      : `<div class="status-card status-card--busy">
         <p class="status-label">Miejsce zajęte</p>
         <p class="status-plate">${escapeHtml(active.plate)}</p>
         <p class="status-driver">${escapeHtml(active.driverName)}</p>
         <p class="status-time">Od: ${escapeHtml(formatDateTime(active.checkedInAt))}</p>
-      </div>`
-    : `<div class="status-card status-card--free">
-        <p class="status-label">Miejsce wolne</p>
       </div>`;
+
+  const checkInBlocked = active && !active.pickedUpAt;
 
   const hiddenUid = `<input type="hidden" name="uid" value="${escapeHtml(spot.id)}" />`;
 
   const checkoutForm =
-    active && state.drivers.length
+    active && !active.pickedUpAt && state.drivers.length
       ? `<form method="post" action="/p/check-out" class="check-form check-form--out">
           ${hiddenUid}
           <h2 class="form-title">Zwolnij miejsce</h2>
@@ -396,8 +648,9 @@ app.get("/p", (req, res) => {
     ${statusBlock}
     ${
       state.drivers.length
-        ? `<form method="post" action="/p/check-in" class="check-form">
+        ? `<form method="post" action="/p/check-in" class="check-form check-form--in" id="check-in-form">
         ${hiddenUid}
+        <input type="hidden" name="authCode" id="auth-code-hidden" value="" />
         <h2 class="form-title">Melduję się na tym miejscu</h2>
         <label for="plate-in">Numer rejestracyjny</label>
         <input
@@ -411,18 +664,43 @@ app.get("/p", (req, res) => {
           spellcheck="false"
           placeholder="np. WX12345"
           inputmode="text"
-          ${active ? "disabled" : ""}
+          ${checkInBlocked ? "disabled" : ""}
         />
         <p class="plate-validation" id="plate-in-hint" aria-live="polite"></p>
-        <button type="submit" class="btn btn--primary" ${active ? "disabled" : ""}>Melduję się</button>
+        <button type="submit" class="btn btn--primary" ${checkInBlocked ? "disabled" : ""}>Melduję się</button>
       </form>`
         : `<p class="hint">Brak kierowców w słowniku — dodaj tablice w panelu administracyjnym.</p>`
     }
     ${checkoutForm}
   </main>
+  <div id="auth-modal" class="auth-modal" aria-hidden="true">
+    <div class="auth-modal__backdrop" id="auth-modal-backdrop"></div>
+    <div class="auth-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+      <h2 class="auth-modal__title" id="auth-modal-title">Kod autoryzacyjny</h2>
+      <p class="auth-modal__text">
+        Na podany w awizacji numer telefonu wysłany został SMS z kodem autoryzacyjnym, wprowadź kod poniżej
+      </p>
+      <label for="auth-code-input">Kod SMS (4 cyfry)</label>
+      <input
+        type="text"
+        id="auth-code-input"
+        class="check-input auth-code-input"
+        maxlength="4"
+        inputmode="numeric"
+        pattern="[1234]{4}"
+        autocomplete="one-time-code"
+        placeholder="np. 1234"
+      />
+      <p class="plate-validation" id="auth-code-hint" aria-live="polite"></p>
+      <button type="button" class="btn btn--primary" id="auth-code-confirm">Potwierdź meldunek</button>
+      <button type="button" class="btn btn--secondary auth-modal__cancel" id="auth-code-cancel">Anuluj</button>
+    </div>
+  </div>
   <script>
     (function () {
       var validPlates = new Set(${validPlatesJson});
+      var platesParkedElsewhere = new Set(${platesParkedElsewhereJson});
+      var plateAlreadyParkedMsg = ${JSON.stringify(PLATE_ALREADY_PARKED_MSG)};
       function normalizePlate(value) {
         return String(value || "")
           .trim()
@@ -430,11 +708,15 @@ app.get("/p", (req, res) => {
           .replace(/\\s+/g, "")
           .replace(/-/g, "");
       }
+      function isValidAuthCode(value) {
+        return /^[1234]{4}$/.test(String(value || "").trim());
+      }
       function setupPlateField(input) {
         var hint = document.getElementById(input.id + "-hint");
         var form = input.closest("form");
         var submit = form && form.querySelector('button[type="submit"]');
         if (!form || !submit) return;
+        var isCheckInForm = form.id === "check-in-form";
         function validate() {
           if (input.disabled) {
             submit.disabled = true;
@@ -457,6 +739,14 @@ app.get("/p", (req, res) => {
             submit.disabled = true;
             return false;
           }
+          if (isCheckInForm && platesParkedElsewhere.has(normalized)) {
+            if (hint) {
+              hint.textContent = plateAlreadyParkedMsg;
+              hint.className = "plate-validation plate-validation--err";
+            }
+            submit.disabled = true;
+            return false;
+          }
           if (hint) {
             hint.textContent = "";
             hint.className = "plate-validation";
@@ -471,10 +761,76 @@ app.get("/p", (req, res) => {
             return;
           }
           input.value = normalizePlate(input.value);
+          if (isCheckInForm) {
+            event.preventDefault();
+            if (window.openAuthModal) window.openAuthModal(form);
+          }
         });
         validate();
       }
       document.querySelectorAll(".plate-field").forEach(setupPlateField);
+
+      (function setupAuthModal() {
+        var modal = document.getElementById("auth-modal");
+        var backdrop = document.getElementById("auth-modal-backdrop");
+        var input = document.getElementById("auth-code-input");
+        var hint = document.getElementById("auth-code-hint");
+        var confirmBtn = document.getElementById("auth-code-confirm");
+        var cancelBtn = document.getElementById("auth-code-cancel");
+        var pendingForm = null;
+        if (!modal || !input || !confirmBtn) return;
+
+        function closeModal() {
+          modal.classList.remove("auth-modal--open");
+          modal.setAttribute("aria-hidden", "true");
+          pendingForm = null;
+          input.value = "";
+          if (hint) {
+            hint.textContent = "";
+            hint.className = "plate-validation";
+          }
+        }
+
+        function openModal(form) {
+          pendingForm = form;
+          modal.classList.add("auth-modal--open");
+          modal.setAttribute("aria-hidden", "false");
+          input.value = "";
+          if (hint) {
+            hint.textContent = "";
+            hint.className = "plate-validation";
+          }
+          setTimeout(function () {
+            input.focus();
+          }, 50);
+        }
+
+        function submitWithCode() {
+          var code = String(input.value || "").trim();
+          if (!isValidAuthCode(code)) {
+            if (hint) {
+              hint.textContent = "Wprowadź poprawny 4-cyfrowy kod (cyfry 1–4).";
+              hint.className = "plate-validation plate-validation--err";
+            }
+            return;
+          }
+          if (!pendingForm) return;
+          var hidden = document.getElementById("auth-code-hidden");
+          if (hidden) hidden.value = code;
+          pendingForm.submit();
+        }
+
+        window.openAuthModal = openModal;
+        confirmBtn.addEventListener("click", submitWithCode);
+        cancelBtn.addEventListener("click", closeModal);
+        backdrop.addEventListener("click", closeModal);
+        input.addEventListener("keydown", function (event) {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            submitWithCode();
+          }
+        });
+      })();
     })();
   </script>
 </body>
@@ -484,16 +840,28 @@ app.get("/p", (req, res) => {
 app.post("/p/check-in", ensureSpotFromRequest, (req, res) => {
   const spotId = req.spotUid;
   const plate = normalizePlate(req.body && req.body.plate);
+  const authCode = String((req.body && req.body.authCode) || "").trim();
   const state = req.state;
+  if (!isValidAuthCode(authCode)) {
+    return res.redirect(
+      buildCheckInPath(spotId, { err: "Nieprawidłowy kod autoryzacyjny SMS." })
+    );
+  }
   const driver = findDriverByPlate(state, plate);
   if (!driver) {
     return res.redirect(
       buildCheckInPath(spotId, { err: "Numer rejestracyjny nie obecny na placu." })
     );
   }
+  if (findActiveCheckInByPlateOnOtherSpot(state, plate, spotId)) {
+    return res.redirect(buildCheckInPath(spotId, { err: PLATE_ALREADY_PARKED_MSG }));
+  }
   const active = getActiveCheckIn(state, spotId);
-  if (active) {
+  if (active && !active.pickedUpAt) {
     return res.redirect(buildCheckInPath(spotId, { err: "Miejsce jest już zajęte." }));
+  }
+  if (active && active.pickedUpAt && !active.checkedOutAt) {
+    active.checkedOutAt = new Date().toISOString();
   }
   state.checkIns.push({
     id: `ci${crypto.randomBytes(6).toString("hex")}`,
@@ -528,6 +896,9 @@ app.post("/p/check-out", ensureSpotFromRequest, (req, res) => {
   const active = getActiveCheckIn(state, spotId);
   if (!active) {
     return res.redirect(buildCheckInPath(spotId, { err: "Miejsce nie jest zajęte." }));
+  }
+  if (active.pickedUpAt) {
+    return res.redirect(buildCheckInPath(spotId, { err: "Pojazd został już pobrany z tego miejsca." }));
   }
   if (normalizePlate(active.plate) !== normalizePlate(driver.plate)) {
     return res.redirect(
