@@ -2,7 +2,17 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const dbFile = process.env.DATA_FILE || path.join(__dirname, "..", "data.json");
+function resolveDataFilePath() {
+  if (process.env.DATA_FILE) {
+    return process.env.DATA_FILE;
+  }
+  if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
+    return path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "data.json");
+  }
+  return path.join(__dirname, "..", "data.json");
+}
+
+const dbFile = resolveDataFilePath();
 const yes = process.argv.includes("--yes");
 
 const seed = {

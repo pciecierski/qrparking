@@ -38,8 +38,53 @@ docker compose up --build
 
 Aplikacja: http://localhost:3001 (dane w wolumenie `DATA_FILE`).
 
+## Railway (deploy bez utraty danych)
+
+Na Railway **dysk kontenera jest efemeryczny** — przy każdym deployu kontener startuje od zera. Jeśli `data.json` leży w `/app/data.json` bez wolumenu, miejsca i kierowcy **znikają po releasie**.
+
+### Rozwiązanie: Volume (trwały dysk)
+
+1. W Railway: **projekt → serwis → Volumes → Add Volume**
+2. Podłącz wolumen do serwisu aplikacji
+3. Ustaw **Mount Path:** `/app/data`
+4. Zdeployuj ponownie (push na GitHub lub *Redeploy*)
+
+Aplikacja automatycznie zapisze dane w:
+
+`/app/data/data.json`
+
+(zmienna `RAILWAY_VOLUME_MOUNT_PATH` jest ustawiana przez Railway w runtime).
+
+### Weryfikacja
+
+W logach startu serwisu powinno być:
+
+```
+Data file: /app/data/data.json
+```
+
+Jeśli widzisz `Data file: /app/data.json` **bez** katalogu `/app/data/`, wolumen nie jest podpięty — dane znowu znikną po deployu.
+
+### Przywracanie danych po utracie
+
+- Wprowadź miejsca i kierowców ponownie w panelu, **albo**
+- Skopiuj lokalny `data.json` na wolumen (np. przez `railway shell` po podpięciu volume)
+
+**Nie uruchamiaj** `npm run seed:local` na produkcji — nadpisze całą bazę przykładowymi danymi.
+
+### Alternatywa (jawna ścieżka)
+
+Możesz też ustawić zmienną środowiskową:
+
+`DATA_FILE=/app/data/data.json`
+
+(przy mount path wolumenu `/app/data`).
+
+### Długoterminowo
+
+Dla większej niezawodności warto przejść na **PostgreSQL** (`DATABASE_URL`) — jak w Marketplace. Plik JSON + volume wystarcza na PoC.
+
 ## Następne kroki (poza PoC)
 
 - PostgreSQL (`DATABASE_URL`) jak w Marketplace  
-- Railway / HTTPS  
 - Historia meldunków w panelu  

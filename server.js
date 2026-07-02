@@ -3,7 +3,17 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 
-const dbFilePath = process.env.DATA_FILE || path.join(__dirname, "data.json");
+function resolveDataFilePath() {
+  if (process.env.DATA_FILE) {
+    return process.env.DATA_FILE;
+  }
+  if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
+    return path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "data.json");
+  }
+  return path.join(__dirname, "data.json");
+}
+
+const dbFilePath = resolveDataFilePath();
 const clientDist = path.join(__dirname, "client", "dist");
 const app = express();
 const port = process.env.PORT || 3000;
@@ -150,6 +160,11 @@ function initState() {
   if (!fs.existsSync(dbFilePath)) {
     persistState();
     console.log(`Utworzono plik danych: ${dbFilePath}`);
+  }
+  if (process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_VOLUME_MOUNT_PATH && !process.env.DATA_FILE) {
+    console.warn(
+      "UWAGA: Brak wolumenu Railway (RAILWAY_VOLUME_MOUNT_PATH). Dane w pliku JSON znikną po kolejnym deployu. Dodaj Volume z mount path np. /app/data."
+    );
   }
   console.log(
     `Stan parkingu: ${cachedState.spots.length} miejsc, ${cachedState.drivers.length} aut na placu, ${cachedState.yardDrivers.length} kierowców placowych, ${cachedState.checkIns.length} meldunków`
