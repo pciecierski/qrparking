@@ -25,7 +25,8 @@ const NAV_TABS = [
 
 const MODULE_LINKS = [
   { path: "/pobranie-auta", label: "Pobranie auta" },
-  { path: "/kierowcy-placowi", label: "Kierowcy placowi" }
+  { path: "/kierowcy-placowi", label: "Kierowcy placowi" },
+  { path: "/wirtualnyparking", label: "Wirtualny Parking" }
 ];
 
 function resolveTab(pathname) {
