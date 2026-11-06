@@ -135,26 +135,10 @@ a {
   font-weight: 600;
 }
 
-.plate-row {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-  margin-bottom: 6px;
-}
-
-.plate-row .check-input {
-  margin-bottom: 0;
-  flex: 1;
-  min-width: 0;
-}
-
 .btn--scan {
-  width: auto;
-  flex-shrink: 0;
-  padding: 10px 14px;
+  margin-top: 10px;
   background: #0f172a;
   color: #fff;
-  white-space: nowrap;
 }
 
 .btn--scan:disabled {
