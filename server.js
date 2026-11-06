@@ -677,25 +677,23 @@ app.get("/p", (req, res) => {
           ${hiddenUid}
           <h2 class="form-title">Zwolnij miejsce</h2>
           <label for="plate-out">Numer rejestracyjny</label>
-          <div class="plate-row">
-            <input
-              type="text"
-              id="plate-out"
-              name="plate"
-              required
-              class="check-input plate-field"
-              autocomplete="off"
-              autocapitalize="characters"
-              spellcheck="false"
-              placeholder="np. WX12345"
-              inputmode="text"
-            />
-            <button type="button" class="btn btn--scan plate-scan-btn" data-plate-target="plate-out">
-              Aparat
-            </button>
-          </div>
+          <input
+            type="text"
+            id="plate-out"
+            name="plate"
+            required
+            class="check-input plate-field"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            placeholder="np. WX12345"
+            inputmode="text"
+          />
           <p class="plate-validation" id="plate-out-hint" aria-live="polite"></p>
           <button type="submit" class="btn btn--secondary" disabled>Zwalniam miejsce</button>
+          <button type="button" class="btn btn--scan plate-scan-btn" data-plate-target="plate-out">
+            Aparat
+          </button>
         </form>`
       : "";
 
@@ -725,31 +723,29 @@ app.get("/p", (req, res) => {
         <input type="hidden" name="authCode" id="auth-code-hidden" value="" />
         <h2 class="form-title">Melduję się na tym miejscu</h2>
         <label for="plate-in">Numer rejestracyjny</label>
-        <div class="plate-row">
-          <input
-            type="text"
-            id="plate-in"
-            name="plate"
-            required
-            class="check-input plate-field"
-            autocomplete="off"
-            autocapitalize="characters"
-            spellcheck="false"
-            placeholder="np. WX12345"
-            inputmode="text"
-            ${checkInBlocked ? "disabled" : ""}
-          />
-          <button
-            type="button"
-            class="btn btn--scan plate-scan-btn"
-            data-plate-target="plate-in"
-            ${checkInBlocked ? "disabled" : ""}
-          >
-            Aparat
-          </button>
-        </div>
+        <input
+          type="text"
+          id="plate-in"
+          name="plate"
+          required
+          class="check-input plate-field"
+          autocomplete="off"
+          autocapitalize="characters"
+          spellcheck="false"
+          placeholder="np. WX12345"
+          inputmode="text"
+          ${checkInBlocked ? "disabled" : ""}
+        />
         <p class="plate-validation" id="plate-in-hint" aria-live="polite"></p>
         <button type="submit" class="btn btn--primary" ${checkInBlocked ? "disabled" : ""}>Melduję się</button>
+        <button
+          type="button"
+          class="btn btn--scan plate-scan-btn"
+          data-plate-target="plate-in"
+          ${checkInBlocked ? "disabled" : ""}
+        >
+          Aparat
+        </button>
       </form>`
         : `<p class="hint">Brak kierowców w słowniku — dodaj tablice w panelu administracyjnym.</p>`
     }
