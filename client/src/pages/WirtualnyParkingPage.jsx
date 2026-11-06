@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Box, Button, Chip, Stack, Tooltip, Typography } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
@@ -88,54 +88,163 @@ function spotTooltip(spot) {
     .join("\n");
 }
 
-function TruckWithTrailer({ plate, colors }) {
+function formatPlateDisplay(plate) {
+  const raw = String(plate || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (!raw) return "";
+  const match = raw.match(/^([A-Z]{1,3})(.*)$/);
+  if (!match) return raw;
+  const [, prefix, rest] = match;
+  return rest ? `${prefix} ${rest}` : prefix;
+}
+
+function Wheel({ cx, cy, r = 6.2 }) {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r} fill="#0d0d0d" />
+      <circle cx={cx} cy={cy} r={r - 1.4} fill="#455a64" />
+      <circle cx={cx} cy={cy} r={r - 3} fill="#90a4ae" />
+      <circle cx={cx} cy={cy} r={1.35} fill="#eceff1" />
+    </g>
+  );
+}
+
+/** Czytelna polska tablica pod pojazdem (bez łamania tekstu na burcie). */
+function PolishPlateBadge({ plate }) {
+  const display = formatPlateDisplay(plate);
+  if (!display) return null;
+  const compact = display.replace(/\s/g, "").length > 7;
   return (
     <Box
       sx={{
-        position: "relative",
+        mt: 0.55,
+        mx: "auto",
+        display: "flex",
+        alignItems: "stretch",
         width: "100%",
-        height: 52,
-        mt: 0.5
+        maxWidth: 132,
+        height: 26,
+        borderRadius: "3px",
+        border: "1.5px solid #111",
+        overflow: "hidden",
+        bgcolor: "#f7f7f7",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.2)"
       }}
+      aria-label={`Tablica ${display}`}
     >
       <Box
-        component="svg"
-        viewBox="0 0 128 52"
-        sx={{ width: "100%", height: "100%", display: "block" }}
-        aria-hidden
+        sx={{
+          width: 20,
+          flexShrink: 0,
+          bgcolor: "#003399",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "2px"
+        }}
       >
-        <rect x="4" y="18" width="34" height="22" rx="3" fill={colors.border} opacity="0.9" />
-        <rect x="8" y="22" width="14" height="10" rx="1" fill="#fff" opacity="0.85" />
-        <rect x="38" y="14" width="78" height="26" rx="2" fill={colors.border} />
-        <rect x="44" y="18" width="66" height="18" rx="1" fill={colors.bg} stroke={colors.text} strokeWidth="0.6" />
-        <circle cx="22" cy="42" r="6" fill="#37474f" />
-        <circle cx="22" cy="42" r="2.5" fill="#90a4ae" />
-        <circle cx="52" cy="42" r="6" fill="#37474f" />
-        <circle cx="52" cy="42" r="2.5" fill="#90a4ae" />
-        <circle cx="100" cy="42" r="6" fill="#37474f" />
-        <circle cx="100" cy="42" r="2.5" fill="#90a4ae" />
+        <Box component="span" sx={{ color: "#fff", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>
+          PL
+        </Box>
+        <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#ffcc00" }} />
       </Box>
-      {plate ? (
-        <Typography
-          variant="caption"
+      <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", px: 0.6, minWidth: 0 }}>
+        <Box
+          component="span"
           sx={{
-            position: "absolute",
-            top: "38%",
-            left: "58%",
-            transform: "translate(-50%, -50%)",
+            fontFamily: 'ui-monospace, "Cascadia Mono", "Segoe UI Mono", "Courier New", monospace',
             fontWeight: 800,
-            letterSpacing: 0.4,
-            fontSize: "0.62rem",
-            color: colors.text,
-            maxWidth: "52%",
-            textAlign: "center",
-            lineHeight: 1.1,
-            wordBreak: "break-all"
+            fontSize: compact ? "0.72rem" : "0.84rem",
+            letterSpacing: compact ? 0.3 : 0.7,
+            color: "#111",
+            lineHeight: 1,
+            whiteSpace: "nowrap"
           }}
         >
-          {plate}
-        </Typography>
-      ) : null}
+          {display}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+/** Ciągnik + naczepa — czytelniejszy widok boczny (bez tekstu na burcie). */
+function TruckIllustration({ variant = "occupied" }) {
+  const uid = useId().replace(/:/g, "");
+  const cabGradId = `cabGrad-${uid}`;
+  const trailGradId = `trailGrad-${uid}`;
+  const isGhost = variant === "picked_up";
+  const cabin = isGhost ? "#1565c0" : "#263238";
+  const cabinHi = isGhost ? "#42a5f5" : "#546e7a";
+  const trailer = isGhost ? "#90caf9" : "#607d8b";
+  const panel = isGhost ? "#e3f2fd" : "#eceff1";
+  const trim = isGhost ? "#0277bd" : "#37474f";
+  const opacity = isGhost ? 0.8 : 1;
+
+  return (
+    <Box
+      component="svg"
+      viewBox="0 0 168 70"
+      sx={{ width: "100%", height: "auto", display: "block", mt: 0.35 }}
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id={cabGradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={cabinHi} />
+          <stop offset="100%" stopColor={cabin} />
+        </linearGradient>
+        <linearGradient id={trailGradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={panel} />
+          <stop offset="100%" stopColor={trailer} />
+        </linearGradient>
+      </defs>
+      <g opacity={opacity}>
+        <ellipse cx="84" cy="65" rx="74" ry="3.5" fill="#000" opacity="0.16" />
+
+        {/* naczepa */}
+        <rect x="50" y="10" width="112" height="38" rx="3.5" fill={trailer} />
+        <rect x="54" y="14" width="104" height="30" rx="2" fill={`url(#${trailGradId})`} stroke={trim} strokeWidth="1" />
+        {[68, 84, 100, 116, 132, 148].map((x) => (
+          <line key={x} x1={x} y1="16" x2={x} y2="42" stroke={trim} strokeOpacity="0.25" strokeWidth="1.5" />
+        ))}
+        <rect x="54" y="14" width="104" height="6" rx="1.5" fill={trailer} opacity="0.55" />
+        <rect x="154" y="42" width="6" height="4" rx="0.8" fill="#e53935" />
+
+        {/* siodło */}
+        <rect x="42" y="30" width="11" height="8" rx="1.2" fill="#1a1a1a" />
+        <circle cx="47.5" cy="34" r="2.2" fill="#90a4ae" />
+
+        {/* kabina */}
+        <path d="M6 24 h22 l10 8 v20 H6 c-2.5 0-4.5-2-4.5-4.5 V28.5 C1.5 26 3.5 24 6 24 z" fill={`url(#${cabGradId})`} />
+        <path d="M11 26.5 h16.5 l6.5 6.5 H11 z" fill="#b3e5fc" />
+        <rect x="12" y="34.5" width="10" height="7" rx="1.1" fill="#81d4fa" />
+        <rect x="5" y="46" width="35" height="5.5" rx="1.2" fill="#111" />
+        <rect x="3.5" y="33" width="5.5" height="12" rx="1" fill="#0d0d0d" />
+        {[35.5, 38.5, 41.5].map((y) => (
+          <line key={y} x1="4.3" y1={y} x2="8.2" y2={y} stroke="#9e9e9e" strokeWidth="0.85" />
+        ))}
+        <rect x="29" y="28" width="3" height="7" rx="0.8" fill="#1a1a1a" />
+        <circle cx="5.2" cy="40.5" r="1.7" fill="#ffe082" />
+        <circle cx="5.2" cy="44.5" r="1.1" fill="#ff8a65" />
+
+        <Wheel cx={17} cy={53} />
+        <Wheel cx={36} cy={53} r={5.8} />
+        <Wheel cx={76} cy={53} />
+        <Wheel cx={94} cy={53} />
+        <Wheel cx={134} cy={53} />
+        <Wheel cx={150} cy={53} r={5.8} />
+      </g>
+    </Box>
+  );
+}
+
+function VehicleOnSpot({ plate, variant = "occupied" }) {
+  return (
+    <Box sx={{ width: "100%" }}>
+      <TruckIllustration variant={variant} />
+      <PolishPlateBadge plate={plate} />
     </Box>
   );
 }
@@ -144,14 +253,16 @@ function VirtualSpot({ spot, vertical = false }) {
   const colors = STATUS_COLORS[spot.spotStatus] || STATUS_COLORS.free;
   const checkIn = spot.activeCheckIn;
   const isOccupied = spot.spotStatus === "occupied";
+  const isPickedUp = spot.spotStatus === "picked_up";
   const isFree = spot.spotStatus === "free";
+  const showVehicle = (isOccupied || isPickedUp) && Boolean(checkIn?.plate || isOccupied);
 
   return (
     <Tooltip title={<span style={{ whiteSpace: "pre-line" }}>{spotTooltip(spot)}</span>} arrow>
       <Box
         sx={{
-          width: vertical ? 96 : 112,
-          minHeight: vertical ? 108 : 96,
+          width: vertical ? 128 : 152,
+          minHeight: vertical ? 148 : 138,
           p: 1,
           borderRadius: 1,
           border: "2px solid",
@@ -162,7 +273,7 @@ function VirtualSpot({ spot, vertical = false }) {
           display: "flex",
           flexDirection: "column",
           alignItems: "stretch",
-          justifyContent: isOccupied ? "flex-start" : "center",
+          justifyContent: showVehicle ? "flex-start" : "center",
           boxSizing: "border-box",
           transition: "box-shadow 0.12s ease",
           "&:hover": { boxShadow: 2 }
@@ -172,13 +283,16 @@ function VirtualSpot({ spot, vertical = false }) {
           {spot.name}
         </Typography>
 
-        {isOccupied ? (
-          <TruckWithTrailer plate={checkIn?.plate} colors={colors} />
+        {showVehicle ? (
+          <VehicleOnSpot
+            plate={checkIn?.plate}
+            variant={isPickedUp ? "picked_up" : "occupied"}
+          />
         ) : null}
 
-        {spot.spotStatus === "picked_up" && checkIn?.plate ? (
-          <Typography variant="caption" fontWeight={700} sx={{ mt: 0.5, textAlign: "center", letterSpacing: 0.4 }}>
-            {checkIn.plate}
+        {isPickedUp ? (
+          <Typography variant="caption" sx={{ mt: 0.3, textAlign: "center", opacity: 0.85, fontWeight: 600 }}>
+            Pobrany
           </Typography>
         ) : null}
 
@@ -197,7 +311,7 @@ function SideSpots({ spots, vertical = false }) {
     return (
       <Box
         sx={{
-          width: vertical ? 96 : 112,
+          width: vertical ? 128 : 152,
           minHeight: vertical ? 48 : 32,
           opacity: 0.35
         }}
