@@ -677,18 +677,23 @@ app.get("/p", (req, res) => {
           ${hiddenUid}
           <h2 class="form-title">Zwolnij miejsce</h2>
           <label for="plate-out">Numer rejestracyjny</label>
-          <input
-            type="text"
-            id="plate-out"
-            name="plate"
-            required
-            class="check-input plate-field"
-            autocomplete="off"
-            autocapitalize="characters"
-            spellcheck="false"
-            placeholder="np. WX12345"
-            inputmode="text"
-          />
+          <div class="plate-row">
+            <input
+              type="text"
+              id="plate-out"
+              name="plate"
+              required
+              class="check-input plate-field"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              placeholder="np. WX12345"
+              inputmode="text"
+            />
+            <button type="button" class="btn btn--scan plate-scan-btn" data-plate-target="plate-out">
+              Aparat
+            </button>
+          </div>
           <p class="plate-validation" id="plate-out-hint" aria-live="polite"></p>
           <button type="submit" class="btn btn--secondary" disabled>Zwalniam miejsce</button>
         </form>`
@@ -701,6 +706,7 @@ app.get("/p", (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(spot.name)} — QR Parking</title>
   <link rel="stylesheet" href="/styles.css" />
+  <script src="/plate-scanner.js" defer></script>
 </head>
 <body class="page-checkin">
   <main class="checkin-shell">
@@ -719,19 +725,29 @@ app.get("/p", (req, res) => {
         <input type="hidden" name="authCode" id="auth-code-hidden" value="" />
         <h2 class="form-title">Melduję się na tym miejscu</h2>
         <label for="plate-in">Numer rejestracyjny</label>
-        <input
-          type="text"
-          id="plate-in"
-          name="plate"
-          required
-          class="check-input plate-field"
-          autocomplete="off"
-          autocapitalize="characters"
-          spellcheck="false"
-          placeholder="np. WX12345"
-          inputmode="text"
-          ${checkInBlocked ? "disabled" : ""}
-        />
+        <div class="plate-row">
+          <input
+            type="text"
+            id="plate-in"
+            name="plate"
+            required
+            class="check-input plate-field"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            placeholder="np. WX12345"
+            inputmode="text"
+            ${checkInBlocked ? "disabled" : ""}
+          />
+          <button
+            type="button"
+            class="btn btn--scan plate-scan-btn"
+            data-plate-target="plate-in"
+            ${checkInBlocked ? "disabled" : ""}
+          >
+            Aparat
+          </button>
+        </div>
         <p class="plate-validation" id="plate-in-hint" aria-live="polite"></p>
         <button type="submit" class="btn btn--primary" ${checkInBlocked ? "disabled" : ""}>Melduję się</button>
       </form>`
@@ -835,6 +851,39 @@ app.get("/p", (req, res) => {
         validate();
       }
       document.querySelectorAll(".plate-field").forEach(setupPlateField);
+
+      (function setupPlateCameraScan() {
+        document.querySelectorAll(".plate-scan-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var targetId = btn.getAttribute("data-plate-target");
+            var input = targetId ? document.getElementById(targetId) : null;
+            if (!input || input.disabled) return;
+            if (!window.QrParkingPlateScanner) {
+              var hint = document.getElementById(input.id + "-hint");
+              if (hint) {
+                hint.textContent = "Skaner tablic nie jest jeszcze gotowy — odśwież stronę.";
+                hint.className = "plate-validation plate-validation--err";
+              }
+              return;
+            }
+            window.QrParkingPlateScanner.open({
+              validPlates: validPlates,
+              onResult: function (plate) {
+                input.value = plate;
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.focus();
+              },
+              onError: function (message) {
+                var hint = document.getElementById(input.id + "-hint");
+                if (hint) {
+                  hint.textContent = message || "Nie udało się odczytać tablicy.";
+                  hint.className = "plate-validation plate-validation--err";
+                }
+              }
+            });
+          });
+        });
+      })();
 
       (function setupAuthModal() {
         var modal = document.getElementById("auth-modal");
