@@ -530,8 +530,58 @@ app.post("/api/pobranie-auta/pickup", (req, res) => {
   if (!active) {
     return res.status(400).json({ error: "Miejsce nie jest zajęte — brak auta do pobrania." });
   }
+
+  const spotMeta = {
+    spotId: spot.id,
+    spotName: spot.name,
+    spotZone: normalizeString(spot.zone, 80) || null,
+    plate: active.plate,
+    driverName: active.driverName
+  };
+
+  // Ponowne skanowanie miejsca z już pobranym autem = odstawienie na miejsce.
   if (active.pickedUpAt) {
-    return res.status(409).json({ error: "Auto z tego miejsca zostało już pobrane." });
+    const previousPickup = {
+      pickedUpAt: active.pickedUpAt,
+      pickedUpByYardDriverId: active.pickedUpByYardDriverId || null,
+      pickedUpByYardDriverName: active.pickedUpByYardDriverName || null,
+      pickedUpByYardDriverIdentifier: active.pickedUpByYardDriverIdentifier || null
+    };
+    const returnedAt = new Date().toISOString();
+    delete active.pickedUpAt;
+    delete active.pickedUpByYardDriverId;
+    delete active.pickedUpByYardDriverName;
+    delete active.pickedUpByYardDriverIdentifier;
+    active.returnedAt = returnedAt;
+    active.returnedByYardDriverId = yardDriver.id;
+    active.returnedByYardDriverName = yardDriver.name;
+    active.returnedByYardDriverIdentifier = normalizeString(yardDriver.identifier, 80);
+
+    try {
+      persistState();
+      return res.json({
+        action: "return",
+        pickup: {
+          ...spotMeta,
+          ...previousPickup,
+          returnedAt,
+          returnedByYardDriverId: yardDriver.id,
+          returnedByYardDriverName: yardDriver.name,
+          returnedByYardDriverIdentifier: normalizeString(yardDriver.identifier, 80)
+        }
+      });
+    } catch (err) {
+      console.error("Błąd zapisu stanu:", err);
+      active.pickedUpAt = previousPickup.pickedUpAt;
+      active.pickedUpByYardDriverId = previousPickup.pickedUpByYardDriverId;
+      active.pickedUpByYardDriverName = previousPickup.pickedUpByYardDriverName;
+      active.pickedUpByYardDriverIdentifier = previousPickup.pickedUpByYardDriverIdentifier;
+      delete active.returnedAt;
+      delete active.returnedByYardDriverId;
+      delete active.returnedByYardDriverName;
+      delete active.returnedByYardDriverIdentifier;
+      return res.status(500).json({ error: "Nie udało się zapisać odstawienia auta." });
+    }
   }
 
   const pickedUpAt = new Date().toISOString();
@@ -539,16 +589,17 @@ app.post("/api/pobranie-auta/pickup", (req, res) => {
   active.pickedUpByYardDriverId = yardDriver.id;
   active.pickedUpByYardDriverName = yardDriver.name;
   active.pickedUpByYardDriverIdentifier = normalizeString(yardDriver.identifier, 80);
+  delete active.returnedAt;
+  delete active.returnedByYardDriverId;
+  delete active.returnedByYardDriverName;
+  delete active.returnedByYardDriverIdentifier;
 
   try {
     persistState();
     res.json({
+      action: "pickup",
       pickup: {
-        spotId: spot.id,
-        spotName: spot.name,
-        spotZone: normalizeString(spot.zone, 80) || null,
-        plate: active.plate,
-        driverName: active.driverName,
+        ...spotMeta,
         pickedUpAt,
         pickedUpByYardDriverId: yardDriver.id,
         pickedUpByYardDriverName: yardDriver.name,

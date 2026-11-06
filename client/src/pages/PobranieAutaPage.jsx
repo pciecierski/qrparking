@@ -31,6 +31,7 @@ export default function PobranieAutaPage() {
   const [recognizedDriver, setRecognizedDriver] = useState(null);
   const [step, setStep] = useState("identify");
   const [pickupResult, setPickupResult] = useState(null);
+  const [resultAction, setResultAction] = useState("pickup");
   const [scanBusy, setScanBusy] = useState(false);
   const [scanKey, setScanKey] = useState(0);
 
@@ -47,6 +48,7 @@ export default function PobranieAutaPage() {
     setError(null);
     setRecognizedDriver(null);
     setPickupResult(null);
+    setResultAction("pickup");
     setStep("identify");
 
     try {
@@ -73,6 +75,7 @@ export default function PobranieAutaPage() {
     setError(null);
     setRecognizedDriver(null);
     setPickupResult(null);
+    setResultAction("pickup");
     setStep("identify");
     setScanBusy(false);
     setScanKey(0);
@@ -101,6 +104,7 @@ export default function PobranieAutaPage() {
           setScanKey((k) => k + 1);
           return;
         }
+        setResultAction(data.action === "return" ? "return" : "pickup");
         setPickupResult(data.pickup);
         setStep("done");
       } catch (e) {
@@ -126,6 +130,8 @@ export default function PobranieAutaPage() {
     [processPickup]
   );
 
+  const isReturn = resultAction === "return";
+
   return (
     <Box sx={{ maxWidth: 520, mx: "auto" }}>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
@@ -137,7 +143,7 @@ export default function PobranieAutaPage() {
           <CardContent>
             <Stack spacing={2} component="form" onSubmit={handleVerify}>
               <Typography variant="body1">
-                Aby pobrać auto podaj identyfikator kierowcy placowego.
+                Aby pobrać lub odstawić auto podaj identyfikator kierowcy placowego.
               </Typography>
               <TextField
                 label="Identyfikator kierowcy placowego"
@@ -164,7 +170,10 @@ export default function PobranieAutaPage() {
                 Rozpoznano kierowcę placowego: <strong>{recognizedDriver.name}</strong> (
                 {recognizedDriver.identifier}).
               </Alert>
-              <Typography variant="body1">Możesz teraz pobrać auto z parkingu.</Typography>
+              <Typography variant="body1">
+                Zeskanuj QR miejsca, żeby pobrać auto. Jeśli auto jest już pobrane — ponowne
+                skanowanie tego samego miejsca oznacza odstawienie.
+              </Typography>
               <Button
                 variant="contained"
                 size="large"
@@ -174,7 +183,7 @@ export default function PobranieAutaPage() {
                   setScanKey((k) => k + 1);
                 }}
               >
-                Pobierz auto
+                Skanuj miejsce
               </Button>
               <Button variant="text" onClick={handleReset}>
                 Podaj inny identyfikator
@@ -195,7 +204,7 @@ export default function PobranieAutaPage() {
                 <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
                   <CircularProgress />
                   <Typography variant="body2" color="text.secondary">
-                    Rejestrowanie pobrania auta…
+                    Rejestrowanie…
                   </Typography>
                 </Stack>
               ) : (
@@ -219,12 +228,28 @@ export default function PobranieAutaPage() {
       ) : null}
 
       {step === "done" && pickupResult ? (
-        <Card variant="outlined" sx={{ borderColor: "success.main", borderWidth: 2 }}>
+        <Card
+          variant="outlined"
+          sx={{ borderColor: isReturn ? "info.main" : "success.main", borderWidth: 2 }}
+        >
           <CardContent>
             <Stack spacing={2}>
-              <Alert severity="success" icon={<QrCodeScannerIcon />} sx={{ alignItems: "flex-start" }}>
-                Auto zostało pobrane z miejsca <strong>{pickupResult.spotName}</strong>
-                {pickupResult.spotZone ? ` (${pickupResult.spotZone})` : ""}.
+              <Alert
+                severity={isReturn ? "info" : "success"}
+                icon={<QrCodeScannerIcon />}
+                sx={{ alignItems: "flex-start" }}
+              >
+                {isReturn ? (
+                  <>
+                    Auto zostało odstawione na miejsce <strong>{pickupResult.spotName}</strong>
+                    {pickupResult.spotZone ? ` (${pickupResult.spotZone})` : ""}.
+                  </>
+                ) : (
+                  <>
+                    Auto zostało pobrane z miejsca <strong>{pickupResult.spotName}</strong>
+                    {pickupResult.spotZone ? ` (${pickupResult.spotZone})` : ""}.
+                  </>
+                )}
               </Alert>
               <Box>
                 <Typography variant="body2" color="text.secondary">
@@ -242,17 +267,19 @@ export default function PobranieAutaPage() {
               </Box>
               <Box>
                 <Typography variant="body2" color="text.secondary">
-                  Pobrał
+                  {isReturn ? "Odstawił" : "Pobrał"}
                 </Typography>
                 <Typography variant="body1">
-                  {pickupResult.pickedUpByYardDriverName} ({pickupResult.pickedUpByYardDriverIdentifier})
+                  {isReturn
+                    ? `${pickupResult.returnedByYardDriverName} (${pickupResult.returnedByYardDriverIdentifier})`
+                    : `${pickupResult.pickedUpByYardDriverName} (${pickupResult.pickedUpByYardDriverIdentifier})`}
                 </Typography>
               </Box>
               <Typography variant="caption" color="text.secondary">
-                {formatDateTime(pickupResult.pickedUpAt)}
+                {formatDateTime(isReturn ? pickupResult.returnedAt : pickupResult.pickedUpAt)}
               </Typography>
               <Button variant="contained" onClick={handleReset}>
-                Pobierz kolejne auto
+                Skanuj kolejne miejsce
               </Button>
             </Stack>
           </CardContent>
